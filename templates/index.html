@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Cost & Audit Manager</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        aws: {
+                            orange: '#ff9900',
+                            navy: '#232f3e',
+                            bg: '#f2f3f3',
+                            card: '#ffffff',
+                            link: '#007eb9',
+                            text: '#16191f'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Public Sans', sans-serif;
+            background-color: #f2f3f3;
+            color: #16191f;
+        }
+        .aws-card {
+            background: #ffffff;
+            border: 1px solid #eaeded;
+            box-shadow: 0 1px 1px 0 rgba(0,28,36,0.1);
+        }
+        .aws-nav {
+            background-color: #232f3e;
+            color: #ffffff;
+        }
+        .hidden-view {
+            display: none !important;
+        }
+        .loading-spinner {
+            border: 3px solid #f2f3f3;
+            border-left-color: #ff9900;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Custom Table zebra-striping */
+        .zebra tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        /* Focus styles override */
+        input:focus, select:focus {
+            border-color: #ff9900 !important;
+            box-shadow: 0 0 0 1px #ff9900 !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center">
+
+    <!-- LOGIN VIEW -->
+    <div id="login-view" class="flex-1 w-full flex items-center justify-center p-4">
+        <div class="aws-card p-8 rounded shadow-xl w-full max-w-md transition-all border-t-4 border-aws-orange">
+            <div class="text-center mb-8">
+                <img src="/static/logo.png" alt="AWS Cost" class="h-16 w-16 mx-auto mb-4 object-contain">
+                <h1 class="text-2xl font-bold text-aws-text tracking-tight">Access Control</h1>
+                <p class="text-gray-500 mt-2 text-sm">Sign in to manage AWS Cost Explorer</p>
+            </div>
+            <form id="login-form" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">Username</label>
+                    <input type="text" id="username" class="mt-1 block w-full px-4 py-2 bg-white border border-gray-400 rounded text-gray-900 placeholder-gray-400 focus:outline-none transition-all" placeholder="admin" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">Password</label>
+                    <input type="password" id="password" class="mt-1 block w-full px-4 py-2 bg-white border border-gray-400 rounded text-gray-900 placeholder-gray-400 focus:outline-none transition-all" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded shadow-sm text-sm font-bold text-white bg-aws-orange hover:bg-[#ec8b00] focus:outline-none transition-all">
+                    Sign In
+                </button>
+                <div id="login-error" class="text-red-600 text-sm text-center mt-2 hidden-view"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DASHBOARD VIEW -->
+    <div id="dashboard-view" class="hidden-view w-full max-w-7xl mx-auto p-4 md:p-8 flex-1 flex flex-col gap-6">
+        
+        <!-- Navbar -->
+        <header class="aws-nav w-full py-3 px-8 flex justify-between items-center shadow-md rounded-b mb-4">
+            <div class="flex items-center gap-3">
+                <img src="/static/logo.png" alt="AWS" class="h-8 w-8 object-contain bg-white rounded p-0.5">
+                <h1 class="text-xl font-bold">AWS Cost & Audit Manager</h1>
+            </div>
+            <div class="flex items-center gap-6 text-sm">
+                <span id="user-display" class="font-medium"></span>
+                <button id="btn-manage-accounts" class="hover:text-aws-orange transition-colors">Cuentas AWS</button>
+                <button id="btn-logout" class="bg-aws-orange text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-[#ec8b00] transition-all">SIGN OUT</button>
+            </div>
+        </header>
+
+        <!-- Dynamic Controls -->
+        <div class="aws-card p-6 rounded flex flex-wrap items-end gap-5">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Cuenta AWS</label>
+                <select id="account-select" class="w-full bg-white border border-gray-400 rounded px-3 py-2 text-gray-900 focus:outline-none">
+                    <option value="" disabled selected>Cargando cuentas...</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Fecha Inicio</label>
+                <input type="date" id="start-date" class="w-full bg-white border border-gray-400 rounded px-3 py-2 text-gray-900 outline-none">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Fecha Fin</label>
+                <input type="date" id="end-date" class="w-full bg-white border border-gray-400 rounded px-3 py-2 text-gray-900 outline-none">
+            </div>
+            <div>
+                <button id="btn-fetch-costs" class="px-6 py-2 bg-aws-orange hover:bg-[#ec8b00] text-white rounded font-bold transition-all shadow-sm">
+                    Analizar Costos
+                </button>
+            </div>
+        </div>
+
+        <!-- Global Status / Loading -->
+        <div id="status-container" class="hidden-view flex-col items-center justify-center py-10">
+            <div class="loading-spinner mb-4"></div>
+            <p id="status-text" class="text-aws-orange animate-pulse font-bold">Connecting to AWS Cost Explorer...</p>
+        </div>
+
+        <!-- Dashboard Widgets -->
+        <div id="dashboard-widgets" class="hidden-view flex flex-col gap-6">
+
+            <!-- Controles Inteligentes -->
+            <div class="aws-card p-4 rounded flex flex-wrap gap-4 items-center">
+                <div class="flex-1 min-w-[200px]">
+                    <div class="relative">
+                        <input type="text" id="search-filter" class="w-full bg-white border border-gray-400 rounded pl-4 pr-4 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none" placeholder="Filter by Resource Name (Tag)...">
+                    </div>
+                </div>
+                <div>
+                    <select id="service-filter" class="bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none">
+                        <option value="ALL">Todos los Servicios</option>
+                    </select>
+                </div>
+                <div>
+                    <select id="region-filter" class="bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none">
+                        <option value="ALL">Todas las Regiones</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2 bg-gray-100 border border-gray-300 rounded p-1">
+                    <button id="view-grouped" class="px-3 py-1 text-sm font-bold rounded bg-white text-gray-900 shadow-sm pointer-events-none border border-gray-300">Resumen</button>
+                    <button id="view-detailed" class="px-3 py-1 text-sm font-medium rounded text-gray-600 hover:text-aws-orange transition-colors">Detalle (Día a Día)</button>
+                </div>
+            </div>
+            
+            <!-- Summary Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Total Cost Widget -->
+                <div class="aws-card p-6 rounded relative overflow-hidden">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase">Costo Total Periodo</h3>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-gray-900" id="widget-total-cost">$0.00</span>
+                        <span class="text-sm text-gray-500 font-medium">USD</span>
+                    </div>
+                </div>
+                <!-- Exports Widgets -->
+                <div class="aws-card p-6 rounded flex flex-col justify-center items-start gap-4">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase">Informes de Costos</h3>
+                    <div class="flex gap-3 w-full">
+                        <button id="btn-export-csv" class="flex-1 px-4 py-2 bg-white text-gray-700 rounded border border-gray-400 text-sm font-bold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                            CSV (Auditoría)
+                        </button>
+                        <button id="btn-export-pdf" class="flex-1 px-4 py-2 bg-white text-gray-700 rounded border border-gray-400 text-sm font-bold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                            PDF (Ejecutivo)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Stacked Bar (Daily Trend) -->
+                <div class="aws-card p-6 rounded lg:col-span-2 min-h-[400px] flex flex-col">
+                    <h3 class="text-xs font-bold text-gray-600 mb-4 uppercase tracking-wider">Distribución Temporal de Gastos</h3>
+                    <div class="flex-1 relative w-full h-full">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <!-- Pie Chart (Service Distribution) -->
+                <div class="aws-card p-6 rounded min-h-[400px] flex flex-col items-center">
+                    <h3 class="text-xs font-bold text-gray-600 mb-4 uppercase tracking-wider w-full">Mix de Servicios</h3>
+                    <div class="relative w-full aspect-square mt-auto mb-auto max-h-[300px]">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail Table -->
+            <div class="aws-card rounded shadow-sm overflow-hidden flex flex-col">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-xs font-bold text-gray-600 uppercase">Auditoría Detallada de Recursos</h3>
+                </div>
+                <!-- Table Setup -->
+                <div class="w-full overflow-x-auto">
+                    <table class="w-full text-left text-sm text-gray-700 zebra">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 font-bold">Fecha</th>
+                                <th scope="col" class="px-6 py-3 font-bold">Servicio</th>
+                                <th scope="col" class="px-6 py-3 font-bold">Instancia / Recurso (Tag)</th>
+                                <th scope="col" class="px-6 py-3 font-bold">Concepto (Uso)</th>
+                                <th scope="col" class="px-6 py-3 font-bold">Operación</th>
+                                <th scope="col" class="px-6 py-3 font-bold">Región</th>
+                                <th scope="col" class="px-6 py-3 text-right font-bold">Costo Total (Periodo)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-gray-200">
+                            <!-- Rows inserted dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                <div class="p-4 border-t border-gray-200 bg-gray-50 text-sm flex justify-between items-center text-gray-500 rounded-b">
+                    <div>Página <span id="page-current" class="text-gray-900 font-bold">1</span> de <span id="page-total" class="text-gray-900 font-bold">1</span></div>
+                    <div class="flex gap-2">
+                        <button id="btn-prev-page" class="px-3 py-1.5 rounded border border-gray-400 bg-white hover:bg-gray-100 text-gray-700 font-bold transition-colors disabled:opacity-50">Anterior</button>
+                        <button id="btn-next-page" class="px-3 py-1.5 rounded border border-gray-400 bg-white hover:bg-gray-100 text-gray-700 font-bold transition-colors disabled:opacity-50">Siguiente</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Modals area (Account Management) -->
+    <div id="modal-backdrop" class="hidden-view fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div id="modal-accounts" class="aws-card w-full max-w-lg rounded shadow-2xl p-6 transition-all border-t-4 border-aws-orange">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-bold text-aws-text">Gestión de Cuentas AWS</h2>
+                <button id="btn-close-modal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="mb-6 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                <ul id="accounts-list" class="space-y-2">
+                    <!-- Li Accounts -->
+                </ul>
+            </div>
+            
+            <hr class="border-gray-200 mb-6">
+            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Vincular Nueva Cuenta</h3>
+            <form id="form-add-account" class="space-y-4">
+                <input type="text" id="acc-alias" class="w-full bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none" placeholder="Alias (Ej. Producción)" required>
+                <input type="text" id="acc-access" class="w-full bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none" placeholder="Access Key ID" required>
+                <input type="password" id="acc-secret" class="w-full bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none" placeholder="Secret Access Key" required>
+                <input type="text" id="acc-region" class="w-full bg-white border border-gray-400 rounded px-4 py-2 text-sm text-gray-900 focus:outline-none" placeholder="Region (Ej. us-east-1)" value="us-east-1" required>
+                <button type="submit" class="w-full px-4 py-2 bg-aws-orange hover:bg-[#ec8b00] text-white rounded font-bold transition-colors shadow-sm">Guardar Credenciales</button>
+                <div id="modal-error" class="text-red-600 text-xs text-center hidden-view"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Drill-down (Detail) -->
+    <div id="modal-drilldown" class="hidden-view fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="aws-card w-full max-w-5xl rounded shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                    <h2 id="drilldown-title" class="text-lg font-bold text-aws-text">Desglose</h2>
+                    <p class="text-xs font-bold text-gray-500 uppercase mt-1">Total en categoría acumulado: <span id="drilldown-total" class="text-aws-orange text-sm font-bold"></span></p>
+                </div>
+                <button id="btn-close-drilldown" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div id="modal-drilldown-panel" class="p-6 overflow-y-auto bg-white opacity-0 scale-95 transition-all duration-200">
+                <!-- Summary info box -->
+                <div id="modal-summary-text" class="mb-5 p-4 bg-gray-50 border-l-4 border-aws-navy text-sm text-gray-700 leading-relaxed shadow-sm">
+                    Cargando resumen del recurso...
+                </div>
+
+                <div class="w-full overflow-x-auto border border-gray-200 rounded">
+                    <table class="w-full text-left text-sm text-gray-700 zebra">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="px-4 py-3 font-bold min-w-[220px]">Recurso / Instancia</th>
+                                <th class="px-4 py-3 font-bold min-w-[220px]">Concepto (Uso)</th>
+                                <th class="px-4 py-3 font-bold min-w-[120px]">Operación</th>
+                                <th class="px-4 py-3 font-bold min-w-[180px]">Región</th>
+                                <th class="px-4 py-3 text-right font-bold min-w-[140px]">Costo Total (Periodo)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drilldown-tbody" class="divide-y divide-gray-200">
+                            <!-- Detailed rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
